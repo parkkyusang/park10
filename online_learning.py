@@ -13,7 +13,11 @@ from gymnasium import spaces
 import matplotlib.pyplot as plt
 import threading
 import time
-import datetime  # 스케줄링을 위해 추가
+import datetime
+
+# 추가 라이브러리: 미국 증시 캘린더 확인용
+import pandas_market_calendars as mcal
+import pytz
 
 # === 환경 변수 로드 ===
 load_dotenv()
@@ -97,6 +101,20 @@ class KISClient:
             on_message=self.on_message
         )
         threading.Thread(target=self.ws.run_forever).start()
+
+# === 미국 증시가 열려 있는지 확인하는 함수 ===
+def is_us_market_open():
+    nyse = mcal.get_calendar('NYSE')
+    today = datetime.datetime.now().date()
+    # 해당 날짜에 대한 스케줄 조회 (주말, 공휴일이면 스케줄이 비어 있음)
+    schedule = nyse.schedule(start_date=today, end_date=today)
+    if schedule.empty:
+        return False
+    # 미국 동부 시간대로 변환
+    market_open = schedule.iloc[0]['market_open'].tz_convert('US/Eastern')
+    market_close = schedule.iloc[0]['market_close'].tz_convert('US/Eastern')
+    now = datetime.datetime.now(pytz.timezone('US/Eastern'))
+    return market_open <= now <= market_close
 
 # === 온라인 거래 환경 ===
 # 오프라인 학습과 동일하게 5차원 관측값 사용: [SOXL 가격, SOXS 가격, SOXL 보유량, SOXS 보유량, 현금]
@@ -283,16 +301,16 @@ if __name__ == "__main__":
     # 학습 시 사용했던 56차원 관측값 구조에 맞게 모델을 로드
     model = DQN.load(model_path, env=vec_env)
 
-    # 실시간 거래 루프: 밤 11시 (23:00)부터 새벽 5시 (05:00) 사이에만 실행
+    # 실시간 거래 루프: 미국 증시가 열려 있고, 밤 11시 ~ 새벽 5시 사이에만 실행
     obs = vec_env.reset()
     while True:
         now = datetime.datetime.now().time()
-        if now >= datetime.time(23, 0) or now < datetime.time(5, 0):
+        if (now >= datetime.time(23, 0) or now < datetime.time(5, 0)) and is_us_market_open():
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = vec_env.step(action)
             monitor.update(base_env.history)
             print(f"Step: {base_env.current_step}, Action: {action}, Reward: {reward}, Portfolio: {info[0]['portfolio_value']}")
             time.sleep(60)  # 1분 간격 실행
         else:
-            print("현재 실행 시간 외입니다. (실행 시간: 23:00 ~ 05:00) 대기 중...")
-            time.sleep(300)  # 실행 시간 외에는 5분마다 실행 여부 체크
+            print("현재 실행 시간 외이거나 미국 증시가 휴장입니다. 대기 중...")
+            time.sleep(300)  # 실행 시간 외에는 5분마다 체크
