@@ -1,0 +1,7 @@
+requests
+python-dotenv
+websocket-client
+numpy
+stable-baselines3
+gymnasium
+matplotlib
