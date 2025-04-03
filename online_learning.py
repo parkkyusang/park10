@@ -293,10 +293,15 @@ if __name__ == "__main__":
     monitor = RealTimeMonitor()
 
     # 모델 파일 경로 지정
-    model_path = os.path.join(os.getcwd(), "models", "offline_dqn_model_final.zip")
+    # 모델 파일 경로 지정 (같은 폴더에 모델 파일이 있다고 가정)
+    model_path = "offline_dqn_model_final.zip"
+
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"모델 파일을 찾을 수 없습니다: {model_path}")
     print(f"[INFO] 모델 파일 로드 시도: {model_path}")
+
+    # 모델 로드
+    model = DQN.load(model_path, env=vec_env)
 
     # 학습 시 사용했던 56차원 관측값 구조에 맞게 모델을 로드
     model = DQN.load(model_path, env=vec_env)
